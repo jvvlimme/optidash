@@ -1,5 +1,5 @@
 {
-  "name": "Optimus Dashboard",
+  "name": "Optimus_Dashboard",
   "version": "1.0.1",
   "dependencies": {
     "async": "^2.5.0",
