@@ -39,6 +39,50 @@ node index
 
 Run this in prod with PM2 or your preferred method
 
+**Endpoints**
+
+```
+/fetchrelease
+```
+This will fetch the data of the tickets in the latest release for your filter
+
+```
+/fetchongoing
+```
+This will fetch the data of all your tickets that are currently ongoing
+
+```
+/fetchCurrentResolved
+```
+This will fetch the data of all tickets that are already resolved in the current sprint
+
+```
+/releases
+```
+Returns the list of all releases in the DB (there is no retroactive fetch you won't be able to fetch historical data for now)
+
+```
+/releases/:release
+```
+Returns the data for the given release (only will work for the releases returned by the previous call)
+
+```
+/avgReleases
+```
+Returns aggregated and average data for the last 5 sprints
+
+```
+/ongoing
+```
+Return data for tickets that are currently ongoing
+
+```
+/current
+```
+Returns data for tickets that are resolved in the current sprint
+
+There are 2 jobs that calls the function behind the __fetchongoing__ and __fetchcurrentresolved__ every hour so that data is updated automatically.
+
 2. I also want the frontend
 
 The frontend is built with Vuejs.  Go to the ./front/optimus folder and run
