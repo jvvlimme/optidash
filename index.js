@@ -20,7 +20,7 @@ var http = require("request"),
 const filter = process.env.FILTER;
 const apiuser = process.env.APIUSER;
 const apipass = process.env.APIPASS;
-const jira = precess.env.JIRA;
+const jira = process.env.JIRA;
 
 
 const express = require('express');
