@@ -11,7 +11,7 @@ var http = require("request"),
     elasticsearch = require('elasticsearch'),
     elastic = new elasticsearch.Client({
         host: process.env.ES,
-        log: 'error'
+        log: 'trace'
     }),
     schedule = require('node-schedule');
 
@@ -182,11 +182,9 @@ app.get("/fetchOngoing", function (req, res) {
     defaultFields.type = "ongoing"
     defaultFields.body = {query: {match_all: {}}}
     elastic.deleteByQuery(defaultFields, function(err, r) {
-        if (!err) {
-            fetchIssues(jql, qType, function (items) {
-                res.json(items);
-            })
-        }
+        fetchIssues(jql, qType, function (items) {
+            res.json(items);
+        })
     })
 })
 

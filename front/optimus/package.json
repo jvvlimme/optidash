@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "axios": "^0.17.1",
+    "bootstrap-vue": "^1.4.0",
     "devextreme": "17.2.4",
     "element-ui": "^2.0.7",
     "vue": "^2.5.2",
