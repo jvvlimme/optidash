@@ -41,6 +41,13 @@
           </div>
         </div>
       </div>
+      <div class="row">
+        <b-table hover :fields="tableFieldsCompleted " :items="completedIssues">
+          <template slot="key" slot-scope="data">
+            <a v-bind:href="'https://atlassian.persgroep.net/jira/browse/' + data.item.key">{{data.item.key}}</a>
+          </template>
+        </b-table>
+      </div>
     </div>
 </template>
 
@@ -73,7 +80,32 @@
                         label: 'Lead Time',
                         sortable: true
                     }
-                ]
+                ],
+                completedIssues: [],
+                tableFieldsCompleted: [
+                {
+                  key: 'key',
+                  label: 'Key'
+                },
+                {
+                  key: 'issueType',
+                  label: 'Type'
+                },
+                {
+                  key: 'description',
+                  label: 'Descriptions'
+                },
+                  {
+                    key: 'sp',
+                    label: 'sp',
+                    sortable: true
+                  },
+                {
+                  key: 'lead',
+                  label: 'Lead Time',
+                  sortable: true
+                }
+              ]
             }
         },
         created () {
@@ -90,6 +122,7 @@
               .get(this.$base + '/current')
               .then(response => {
                 this.spcurrent = response.data.sp.total
+                this.completedIssues = response.data.issues
               })
         }
 

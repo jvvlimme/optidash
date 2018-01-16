@@ -8,10 +8,9 @@ var http = require("request"),
     moment = require('moment'),
     path = require('path'),
     bodyParser = require('body-parser')
-    elasticsearch = require('elasticsearch'),
+elasticsearch = require('elasticsearch'),
     elastic = new elasticsearch.Client({
-        host: process.env.ES,
-        log: 'trace'
+        host: process.env.ES
     }),
     schedule = require('node-schedule');
 
@@ -26,8 +25,8 @@ const jira = process.env.JIRA;
 const express = require('express');
 const app = express();
 
-var leadStatusses = ["In Progress", "Awaiting Code Review", "In code review", "Awaiting QA Dev", "In QA Dev", "Awaiting UAT"]
-var nonLeadStatusses = ['Backlog', 'Awaiting Development', 'Done']
+var teamStatuses = ["Backlog", "Awaiting Development", "Done", "In Progress", "Awaiting Code Review", "In code review", "Awaiting QA Dev", "In QA Dev", "Awaiting UAT"]
+var leadStatuses = ["In Progress", "Awaiting Code Review", "In code review", "Awaiting QA Dev", "In QA Dev", "Awaiting UAT"]
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: true}));
@@ -46,7 +45,8 @@ var issues = [],
 
 var fetchIssues = function (jql, qType, gnext) {
 
-    var url = "https://"+apiuser+":"+apipass+"@"+jira+"/search?expand=changelog&maxResults=1000&jql=" + jql
+    var url = "https://" + apiuser + ":" + apipass + "@" + jira + "/search?expand=changelog&maxResults=1000&jql=" + jql
+
     http(url, function (err, response, body) {
         var body = JSON.parse(body);
         var l = {};
@@ -92,7 +92,7 @@ var fetchIssues = function (jql, qType, gnext) {
             x.history.forEach(function (historyItem, index) {
 
                 var start = moment(historyItem.dt);
-                var end = (typeof(x.history[index + 1]) == "undefined") ?  moment(): moment(x.history[index + 1].dt);
+                var end = (typeof(x.history[index + 1]) == "undefined") ? moment() : moment(x.history[index + 1].dt);
 
                 // We don't want to count weekends
                 var weekendCounter = 0;
@@ -108,8 +108,9 @@ var fetchIssues = function (jql, qType, gnext) {
                 x.history[index].start = moment(historyItem.dt);
                 x.history[index].end = end;
                 x.history[index].weekendDays = weekendCounter
-                if (leadStatusses.includes(historyItem.status)) {
-                    x.lead =+ x.history[index].duration;
+
+                if (_.includes(leadStatuses, historyItem.status)) {
+                    x.lead = +x.history[index].duration;
                 }
 
             })
@@ -167,7 +168,7 @@ var fetchIssues = function (jql, qType, gnext) {
 // Fetch data from last release
 
 app.get("/fetchRelease", function (req, res) {
-    var jql = "(fixVersion=latestReleasedVersion()) AND filter="+filter+" and resolution in (Fixed, Done)";
+    var jql = "(fixVersion=latestReleasedVersion()) AND filter=" + filter + " and resolution in (Fixed, Done)";
     var qType = "stories"
     fetchIssues(jql, qType, function (item) {
         res.json(item);
@@ -177,11 +178,11 @@ app.get("/fetchRelease", function (req, res) {
 // Fetch data from tickets that are currently ongoing
 
 app.get("/fetchOngoing", function (req, res) {
-    var jql = "filter = "+filter+" AND status not in ('Backlog', 'Awaiting Development', 'Done') AND issuetype not in ('Epic', 'UX', 'Problem', 'Service Request', 'Follow Up')";
+    var jql = "filter = " + filter + " AND status not in ('Backlog', 'Awaiting Development', 'Done') AND issuetype not in ('Epic', 'UX', 'Problem', 'Service Request', 'Follow Up')";
     var qType = "ongoing";
     defaultFields.type = "ongoing"
     defaultFields.body = {query: {match_all: {}}}
-    elastic.deleteByQuery(defaultFields, function(err, r) {
+    elastic.deleteByQuery(defaultFields, function (err, r) {
         fetchIssues(jql, qType, function (items) {
             res.json(items);
         })
@@ -190,12 +191,12 @@ app.get("/fetchOngoing", function (req, res) {
 
 // Fetch tickets that are fixed or done in current sprint
 
-var getCurrent = function(next) {
-    var jql = "filter="+filter+" and resolution in (Fixed, Done) and resolved >=  -14d and type != 'Epic' and fixVersion is EMPTY";
+var getCurrent = function (next) {
+    var jql = "filter=" + filter + " and resolution in (Fixed, Done) and resolved >=  -14d and type != 'Epic' and fixVersion is EMPTY";
     var qType = "currentSolved";
     defaultFields.type = "currentSolved"
     defaultFields.body = {query: {match_all: {}}}
-    elastic.deleteByQuery(defaultFields, function(err, r) {
+    elastic.deleteByQuery(defaultFields, function (err, r) {
         if (!err) {
             fetchIssues(jql, qType, function (items) {
                 next(items);
@@ -204,8 +205,8 @@ var getCurrent = function(next) {
     })
 }
 
-app.get("/fetchCurrentResolved", function(req, res) {
-    getCurrent(function(data) {
+app.get("/fetchCurrentResolved", function (req, res) {
+    getCurrent(function (data) {
         res.json(data);
     })
 })
@@ -252,15 +253,28 @@ app.get("/releases", function (req, res) {
     })
 })
 
+var avgLeadStatusses = function (buckets) {
+
+    var k = Object.keys(buckets),
+        counter = 0;
+
+    k.forEach(function (item) {
+        if (leadStatuses.includes(item.replace("avgTime", "").replace(/_/g, " "))) {
+            counter += buckets[item].value;
+        }
+    })
+
+    return (counter / buckets.doc_count);
+
+}
 
 var processReleaseData = function (results, next) {
     var release = {}
-
     release.types = results.aggregations.types.buckets.map(function (bucket) {
         return {
             key: bucket.key,
             count: bucket.doc_count,
-            lead: moment.duration((bucket.avgTimeAwaitingCodeReview.value + bucket.avgTimeAwaitingQADev.value + bucket.avgTimeInCodeReview.value + bucket.avgTimeInProgress.value + bucket.avgTimeInQADev.value) / bucket.doc_count, "seconds").asDays().toFixed(2)
+            lead: moment.duration(avgLeadStatusses(bucket), "seconds").asDays().toFixed(2)
         }
     });
     release.issues = results.hits.hits.map(function (item) {
@@ -317,43 +331,7 @@ app.get("/avgReleases", function (req, res) {
                     "terms": {
                         "field": "issueType.keyword"
                     },
-                    "aggs": {
-                        "avgTimeCreated": {
-                            "sum": {
-                                "field": "durationPerStatusFlat.Created"
-                            }
-                        },
-                        "avgTimeAwaitingDevelopment": {
-                            "sum": {
-                                "field": "durationPerStatusFlat.Awaiting_Development"
-                            }
-                        },
-                        "avgTimeInProgress": {
-                            "sum": {
-                                "field": "durationPerStatusFlat.In_Progress"
-                            }
-                        },
-                        "avgTimeAwaitingCodeReview": {
-                            "sum": {
-                                "field": "durationPerStatusFlat.Awaiting_Code_Review"
-                            }
-                        },
-                        "avgTimeInCodeReview": {
-                            "sum": {
-                                "field": "durationPerStatusFlat.In_code_review"
-                            }
-                        },
-                        "avgTimeAwaitingQADev": {
-                            "sum": {
-                                "field": "durationPerStatusFlat.Awaiting_QA_Dev"
-                            }
-                        },
-                        "avgTimeInQADev": {
-                            "sum": {
-                                "field": "durationPerStatusFlat.In_QA_Dev"
-                            }
-                        }
-                    }
+                    "aggs": {}
                 },
                 "label": {
                     "terms": {
@@ -374,6 +352,11 @@ app.get("/avgReleases", function (req, res) {
                 }
             }
         }
+        teamStatuses.forEach(function (status) {
+            q.aggs.types.aggs["avgTime" + status.replace(/ /g, "_")] = {
+                "sum": {"field": "durationPerStatusFlat." + status.replace(/ /g, "_")}
+            }
+        });
         defaultFields.body = q;
         elastic.search(defaultFields).then(
             function (results) {
@@ -401,43 +384,7 @@ app.get("/releases/:release", function (req, res) {
                 "terms": {
                     "field": "issueType.keyword"
                 },
-                "aggs": {
-                    "avgTimeCreated": {
-                        "sum": {
-                            "field": "durationPerStatusFlat.Created"
-                        }
-                    },
-                    "avgTimeAwaitingDevelopment": {
-                        "sum": {
-                            "field": "durationPerStatusFlat.Awaiting_Development"
-                        }
-                    },
-                    "avgTimeInProgress": {
-                        "sum": {
-                            "field": "durationPerStatusFlat.In_Progress"
-                        }
-                    },
-                    "avgTimeAwaitingCodeReview": {
-                        "sum": {
-                            "field": "durationPerStatusFlat.Awaiting_Code_Review"
-                        }
-                    },
-                    "avgTimeInCodeReview": {
-                        "sum": {
-                            "field": "durationPerStatusFlat.In_code_review"
-                        }
-                    },
-                    "avgTimeAwaitingQADev": {
-                        "sum": {
-                            "field": "durationPerStatusFlat.Awaiting_QA_Dev"
-                        }
-                    },
-                    "avgTimeInQADev": {
-                        "sum": {
-                            "field": "durationPerStatusFlat.In_QA_Dev"
-                        }
-                    }
-                }
+                "aggs": {}
             },
             "label": {
                 "terms": {
@@ -469,7 +416,7 @@ app.get("/releases/:release", function (req, res) {
 
 /* Get Current Resolved */
 
-app.get("/current", function(req, res) {
+app.get("/current", function (req, res) {
     var q = {
         "size": 100,
         "query": {
@@ -480,43 +427,7 @@ app.get("/current", function(req, res) {
                 "terms": {
                     "field": "issueType.keyword"
                 },
-                "aggs": {
-                    "avgTimeCreated": {
-                        "sum": {
-                            "field": "durationPerStatusFlat.Created"
-                        }
-                    },
-                    "avgTimeAwaitingDevelopment": {
-                        "sum": {
-                            "field": "durationPerStatusFlat.Awaiting_Development"
-                        }
-                    },
-                    "avgTimeInProgress": {
-                        "sum": {
-                            "field": "durationPerStatusFlat.In_Progress"
-                        }
-                    },
-                    "avgTimeAwaitingCodeReview": {
-                        "sum": {
-                            "field": "durationPerStatusFlat.Awaiting_Code_Review"
-                        }
-                    },
-                    "avgTimeInCodeReview": {
-                        "sum": {
-                            "field": "durationPerStatusFlat.In_code_review"
-                        }
-                    },
-                    "avgTimeAwaitingQADev": {
-                        "sum": {
-                            "field": "durationPerStatusFlat.Awaiting_QA_Dev"
-                        }
-                    },
-                    "avgTimeInQADev": {
-                        "sum": {
-                            "field": "durationPerStatusFlat.In_QA_Dev"
-                        }
-                    }
-                }
+                "aggs": {}
             },
             "label": {
                 "terms": {
@@ -534,6 +445,11 @@ app.get("/current", function(req, res) {
             }
         }
     }
+    teamStatuses.forEach(function (status) {
+        q.aggs.types.aggs["avgTime" + status.replace(/ /g, "_")] = {
+            "sum": {"field": "durationPerStatusFlat." + status.replace(/ /g, "_")}
+        }
+    });
     defaultFields.type = "currentSolved";
     defaultFields.body = q;
     elastic.search(defaultFields).then(function (results) {
@@ -548,7 +464,7 @@ app.get("/current", function(req, res) {
 
 /* Get Ongoing */
 
-var ongoing = function(next) {
+var ongoing = function (next) {
     var q = {
         "size": 100,
         "query": {
@@ -559,43 +475,7 @@ var ongoing = function(next) {
                 "terms": {
                     "field": "issueType.keyword"
                 },
-                "aggs": {
-                    "avgTimeCreated": {
-                        "sum": {
-                            "field": "durationPerStatusFlat.Created"
-                        }
-                    },
-                    "avgTimeAwaitingDevelopment": {
-                        "sum": {
-                            "field": "durationPerStatusFlat.Awaiting_Development"
-                        }
-                    },
-                    "avgTimeInProgress": {
-                        "sum": {
-                            "field": "durationPerStatusFlat.In_Progress"
-                        }
-                    },
-                    "avgTimeAwaitingCodeReview": {
-                        "sum": {
-                            "field": "durationPerStatusFlat.Awaiting_Code_Review"
-                        }
-                    },
-                    "avgTimeInCodeReview": {
-                        "sum": {
-                            "field": "durationPerStatusFlat.In_code_review"
-                        }
-                    },
-                    "avgTimeAwaitingQADev": {
-                        "sum": {
-                            "field": "durationPerStatusFlat.Awaiting_QA_Dev"
-                        }
-                    },
-                    "avgTimeInQADev": {
-                        "sum": {
-                            "field": "durationPerStatusFlat.In_QA_Dev"
-                        }
-                    }
-                }
+                "aggs": {}
             },
             "label": {
                 "terms": {
@@ -613,6 +493,12 @@ var ongoing = function(next) {
             }
         }
     }
+
+    teamStatuses.forEach(function (status) {
+        q.aggs.types.aggs["avgTime" + status.replace(/ /g, "_")] = {
+            "sum": {"field": "durationPerStatusFlat." + status.replace(/ /g, "_")}
+        }
+    });
     defaultFields.type = "ongoing";
     defaultFields.body = q;
     elastic.search(defaultFields).then(function (results) {
@@ -624,21 +510,24 @@ var ongoing = function(next) {
     })
 }
 
-app.get("/ongoing", function(req, res) {
-    ongoing(function(data) {
+app.get("/ongoing", function (req, res) {
+    ongoing(function (data) {
         res.json(data);
     })
 })
 
-var jobOngoing = schedule.scheduleJob('0 0 * * * *', function() {
-    ongoing(function(data) {})
+var jobOngoing = schedule.scheduleJob('0 0 * * * *', function () {
+    ongoing(function (data) {
+    })
 })
 
-var jobFinishedCurrent = schedule.scheduleJob('1 0 * * * *', function() {
-    getCurrent(function(data) {})
+var jobFinishedCurrent = schedule.scheduleJob('1 0 * * * *', function () {
+    getCurrent(function (data) {
+    })
 })
 
-app.listen(process.env.PORT, function () {})
+app.listen(process.env.PORT, function () {
+})
 
 
 
