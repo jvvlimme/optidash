@@ -46,7 +46,6 @@ var issues = [],
 var fetchIssues = function (jql, qType, gnext) {
 
     var url = "https://" + apiuser + ":" + apipass + "@" + jira + "/search?expand=changelog&maxResults=1000&jql=" + jql
-
     http(url, function (err, response, body) {
         var body = JSON.parse(body);
         var l = {};
@@ -110,9 +109,8 @@ var fetchIssues = function (jql, qType, gnext) {
                 x.history[index].weekendDays = weekendCounter
 
                 if (_.includes(leadStatuses, historyItem.status)) {
-                    x.lead = +x.history[index].duration;
+                    x.lead += x.history[index].duration;
                 }
-
             })
 
             var statusHistory = {};
