@@ -4,6 +4,7 @@ import HelloWorld from '@/components/HelloWorld'
 import video from '@/components/Video'
 import ongoing from '@/components/Current'
 import releases from '@/components/Release'
+import epics from '@/components/Epics'
 Vue.use(Router)
 
 export default new Router({
@@ -27,6 +28,11 @@ export default new Router({
       path: '/releases',
       name: 'releases',
       component: releases
+    },
+    {
+      path: '/epics',
+      name: 'epics',
+      component: epics
     }
   ]
 })

@@ -130,14 +130,13 @@
       axios
         .get('http://dashboard.gihq.be/releases')
         .then(response => {
-        this.releases = response.data
-    })
-      console.log(this.releases)
+          this.releases = response.data
+        })
     },
     methods: {
       changeRelease () {
         axios
-          .get('http://dashboard.gihq.be/releases/' + this.selectedRelease.key)
+          .get(this.$base + '/releases/' + this.selectedRelease.key)
           .then(response => {
             this.releaseData = response.data
             this.storyData.sprint = this.releaseData.types.filter(item => item.key.toLowerCase() == 'story')[0]

@@ -1,6 +1,7 @@
 import 'bootstrap/dist/css/bootstrap.css'
 import 'bootstrap-vue/dist/bootstrap-vue.css'
 import 'element-ui/lib/theme-chalk/index.css'
+import axios from 'axios'
 
 // The Vue build version to load with the `import` command
 // (runtime-only or standalone) has been set in webpack.base.conf with an alias.
@@ -18,7 +19,8 @@ import loadHighchartsMore from 'highcharts/highcharts-more'
 
 loadHighchartsMore(Highcharts)
 
-Vue.prototype.$base = 'http://dashboard.gihq.be'
+Vue.prototype.$base = 'http://localhost:3002'
+Vue.prototype.$http = axios
 
 Vue.use(VueYouTubeEmbed)
 Vue.use(BootstrapVue)

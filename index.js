@@ -187,6 +187,51 @@ app.get("/fetchOngoing", function (req, res) {
     })
 })
 
+app.get("/fetchAll", function(req, res) {
+    var jql = "filter = " + filter + " AND issuetype not in ('Epic', 'UX', 'Problem', 'Service Request', 'Follow Up') AND status NOT IN ('Done')";
+    var qType = "all";
+    defaultFields.type = "all"
+    defaultFields.body = {query: {match_all: {}}}
+    elastic.deleteByQuery(defaultFields, function (err, r) {
+        fetchIssues(jql, qType, function (items) {
+            res.json(items);
+        })
+    })
+})
+
+app.get("/fetchEpics", function(req, res) {
+    var jql = "filter ="+filter+" and issuetype = Epic and status not in (Done, closed)"
+    var qType = "epics";
+    defaultFields.type = "epics"
+    defaultFields.body = {query: {match_all: {}}}
+    elastic.deleteByQuery(defaultFields, function (err, r) {
+        fetchIssues(jql, qType, function (items) {
+            var children = items["null"].map(function(item) {
+                return item.key;
+            })
+            fetchEpicChildren(children, function(data) {
+                res.send("ok");
+            })
+        })
+    })
+})
+
+
+var fetchEpicChildren = function(children, next) {
+    var jql = "'Epic Link' IN ("+children.join(",")+")";
+    console.log(jql)
+    var qType = "children";
+    defaultFields.type = "children"
+    defaultFields.body = {query: {match_all: {}}}
+    elastic.deleteByQuery(defaultFields, function (err, r) {
+        fetchIssues(jql, qType, function (items) {
+            JSON.stringify(items);
+            next(items);
+        })
+    })
+}
+
+
 // Fetch tickets that are fixed or done in current sprint
 
 var getCurrent = function (next) {
@@ -216,7 +261,8 @@ var getReleases = function (limit, next) {
         "aggs": {
             "releaseNames": {
                 "terms": {
-                    "field": "releaseName.keyword"
+                    "field": "releaseName.keyword",
+                    "size": 100
                 },
                 "aggs": {
                     "releaseDates": {
@@ -228,7 +274,6 @@ var getReleases = function (limit, next) {
             }
         }
     };
-
     elastic.search({
         index: "stories", type: "stories", body: q
     }).then(function (body) {
@@ -356,6 +401,7 @@ app.get("/avgReleases", function (req, res) {
             }
         });
         defaultFields.body = q;
+        //console.log(JSON.stringify(q))
         elastic.search(defaultFields).then(
             function (results) {
                 processReleaseData(results, function (data) {
@@ -363,6 +409,7 @@ app.get("/avgReleases", function (req, res) {
                 })
             },
             function (error) {
+                console.log(error)
             }
         )
     })
@@ -400,6 +447,11 @@ app.get("/releases/:release", function (req, res) {
             }
         }
     }
+    teamStatuses.forEach(function (status) {
+        q.aggs.types.aggs["avgTime" + status.replace(/ /g, "_")] = {
+            "sum": {"field": "durationPerStatusFlat." + status.replace(/ /g, "_")}
+        }
+    });
     defaultFields.body = q;
     defaultFields.type = "stories"
     elastic.search(defaultFields).then(function (results) {
@@ -459,6 +511,152 @@ app.get("/current", function (req, res) {
     })
 })
 
+/* Get all open tickets */
+
+app.get("/allIssues", function (req, res) {
+    allIssues(function(data) {
+        res.json(data);
+    })
+})
+
+var allIssues = function(next) {
+    var q = {
+        "size": 1000,
+        "query": {
+            "match_all": {}
+        },
+        "aggs": {
+            "types": {
+                "terms": {
+                    "field": "issueType.keyword"
+                },
+                "aggs": {}
+            },
+            "label": {
+                "terms": {
+                    "field": "labels.keyword"
+                },
+                "aggs": {
+                    "sp": {
+                        "sum": {"field": "sp"}
+                    }
+                }
+
+            },
+            "sp": {
+                "sum": {"field": "sp"}
+            }
+        }
+    }
+    teamStatuses.forEach(function (status) {
+        q.aggs.types.aggs["avgTime" + status.replace(/ /g, "_")] = {
+            "sum": {"field": "durationPerStatusFlat." + status.replace(/ /g, "_")}
+        }
+    });
+    defaultFields.type = "all";
+    defaultFields.body = q;
+    elastic.search(defaultFields).then(function (results) {
+        processReleaseData(results, function (data) {
+            var x = _.groupBy(data.issues, function(item) {
+                return item.epic
+            });
+            data.issues = x;
+            next(data);
+        })
+    }, function (error) {
+        next(error.message)
+    })
+}
+
+/* Get all epics and their stories */
+
+var epics = function(next) {
+    var t1 = {
+        index: defaultFields.index,
+        type: "epics"
+    }
+    var q1 = {
+        "size": 1000,
+        "query": {
+            "match_all": {}
+        }
+    }
+    var t2 = {
+        index: defaultFields.index,
+        type: "children"
+    }
+    var q2 = {
+        "size": 1000,
+        "query": {
+            "match_all": {}
+        },
+        "aggs": {
+            "types": {
+                "terms": {
+                    "field": "issueType.keyword"
+                },
+                "aggs": {}
+            },
+            "label": {
+                "terms": {
+                    "field": "labels.keyword"
+                },
+                "aggs": {
+                    "sp": {
+                        "sum": {"field": "sp"}
+                    }
+                }
+
+            },
+            "sp": {
+                "sum": {"field": "sp"}
+            }
+        }
+
+    }
+
+    teamStatuses.forEach(function (status) {
+        q2.aggs.types.aggs["avgTime" + status.replace(/ /g, "_")] = {
+            "sum": {"field": "durationPerStatusFlat." + status.replace(/ /g, "_")}
+        }
+    });
+    //console.log(JSON.stringify(q2))
+    elastic.msearch({
+        body: [
+            t1,
+            q1,
+            t2,
+            q2
+        ]
+    }).then(function(results) {
+        // 0 = epics, 1 = stories
+
+        //next(q2)
+        processReleaseData(results.responses[1], function(data) {
+            var stories = _.groupBy(data.issues, function(item) {
+                return item.epic
+            })
+            var epics = results.responses[0].hits.hits.map(function(item) {
+                return item._source;
+            })
+
+            var x = epics.map(function(item) {
+                item.issues = stories[item.key];
+                return item
+            })
+            //console.log(JSON.stringify(x));
+            next(x);
+        })
+
+    })
+
+}
+
+app.get("/epics", function(req, res) {
+    epics(function(data) {
+        res.json(data);
+    })
+})
 
 /* Get Ongoing */
 
