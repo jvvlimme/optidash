@@ -13,20 +13,18 @@ import VueYouTubeEmbed from 'vue-youtube-embed'
 import Element from 'element-ui'
 import locale from 'element-ui/lib/locale/lang/en'
 import moment from 'vue-moment'
-import VueHighcharts from 'vue-highcharts'
-import Highcharts from 'highcharts'
-import loadHighchartsMore from 'highcharts/highcharts-more'
+import Chartkick from 'chartkick'
+import VueChartkick from 'vue-chartkick'
 
-loadHighchartsMore(Highcharts)
+Vue.use(VueChartkick, { Chartkick })
 
-Vue.prototype.$base = 'http://localhost:3002'
+Vue.prototype.$base = 'http://dashboard.gihq.be'
 Vue.prototype.$http = axios
 
 Vue.use(VueYouTubeEmbed)
 Vue.use(BootstrapVue)
 Vue.use(Element, {locale})
 Vue.use(moment)
-Vue.use(VueHighcharts)
 
 Vue.config.productionTip = false
 

@@ -131,6 +131,11 @@ var fetchIssues = function (jql, qType, gnext) {
                 x.durationPerStatusFlat[item.replace(/ /g, "_")] = statusHistory[item].duration;
                 x.durationPerStatus.push(y);
             })
+            x.durationPerStatus.forEach(function(element) {
+                if (element.label.indexOf(leadStatuses) > -1) {
+                    x.lead += element.duration;
+                }
+            })
             x.lead = moment.duration(x.lead, "seconds").asDays().toFixed(2)
             cb(null, x);
         }, function (err, items) {
@@ -187,7 +192,7 @@ app.get("/fetchOngoing", function (req, res) {
     })
 })
 
-app.get("/fetchAll", function(req, res) {
+app.get("/fetchAll", function (req, res) {
     var jql = "filter = " + filter + " AND issuetype not in ('Epic', 'UX', 'Problem', 'Service Request', 'Follow Up') AND status NOT IN ('Done')";
     var qType = "all";
     defaultFields.type = "all"
@@ -199,17 +204,17 @@ app.get("/fetchAll", function(req, res) {
     })
 })
 
-app.get("/fetchEpics", function(req, res) {
-    var jql = "filter ="+filter+" and issuetype = Epic and status not in (Done, closed)"
+app.get("/fetchEpics", function (req, res) {
+    var jql = "filter =" + filter + " and issuetype = Epic and status not in (Done, closed)"
     var qType = "epics";
     defaultFields.type = "epics"
     defaultFields.body = {query: {match_all: {}}}
     elastic.deleteByQuery(defaultFields, function (err, r) {
         fetchIssues(jql, qType, function (items) {
-            var children = items["null"].map(function(item) {
+            var children = items["null"].map(function (item) {
                 return item.key;
             })
-            fetchEpicChildren(children, function(data) {
+            fetchEpicChildren(children, function (data) {
                 res.send("ok");
             })
         })
@@ -217,15 +222,14 @@ app.get("/fetchEpics", function(req, res) {
 })
 
 
-var fetchEpicChildren = function(children, next) {
-    var jql = "'Epic Link' IN ("+children.join(",")+")";
+var fetchEpicChildren = function (children, next) {
+    var jql = "'Epic Link' IN (" + children.join(",") + ")";
     console.log(jql)
     var qType = "children";
     defaultFields.type = "children"
     defaultFields.body = {query: {match_all: {}}}
     elastic.deleteByQuery(defaultFields, function (err, r) {
         fetchIssues(jql, qType, function (items) {
-            JSON.stringify(items);
             next(items);
         })
     })
@@ -291,8 +295,11 @@ var getReleases = function (limit, next) {
 // API get releases
 
 app.get("/releases", function (req, res) {
-    getReleases(6, function (releases) {
-        res.json(releases)
+    getReleases(100, function (releases) {
+
+        res.json(releases.filter(function (release) {
+            return release.date != "Invalid date"
+        }))
     })
 })
 
@@ -415,6 +422,95 @@ app.get("/avgReleases", function (req, res) {
     })
 });
 
+app.get("/rollingAvgReleases/:release", function (req, res) {
+
+    // Get release data
+
+    var q = {
+        "size": 1,
+        "query": {
+            "term": {
+                "releaseName.keyword": req.params.release
+            }
+        }
+    }
+    //console.log(JSON.stringify(q))
+    defaultFields.body = q;
+    defaultFields.type = "stories"
+    elastic.search(defaultFields).then(function (results) {
+        var releaseDate = moment(results.hits.hits[0]._source.releaseDate).add(1, "day").format();
+        console.log(releaseDate);
+        var q = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "terms": {
+                                "issueType.keyword": ["Story"]
+                            }
+                        },
+                        {
+                            "range": {
+                                "releaseDate": {
+                                    "lte": releaseDate
+                                }
+
+                            }
+                        }
+
+                    ]
+                }
+
+            },
+            "aggs": {
+                "releases": {
+                    "date_histogram": {
+                        "field": "releaseDate",
+                        "interval": "14d"
+                    },
+                    "aggs": {
+                        "release": {
+                            "terms": {"field": "releaseName.keyword"}
+                        },
+                        "sp": {
+                            "sum": {
+                                "field": "sp"
+                            }
+                        },
+                        "mavg": {
+                            "moving_avg": {
+                                "buckets_path": "sp",
+                                "window": 5
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        console.log(JSON.stringify(q))
+        defaultFields.body = q;
+        defaultFields.type = "stories"
+        elastic.search(defaultFields).then(function (results) {
+            res.send(
+                results.aggregations.releases.buckets.map(function (el) {
+                    var x = {}
+                    x.dt = moment(el.key_as_string).format("YYYY-MM-DD");
+                    x.count = el.doc_count;
+                    x.name = el.release.buckets[0].key;
+                    x.sp = el.sp.value;
+                    x.mavg = el.mavg ? el.mavg.value: 0;
+                    return x;
+                }))
+        })
+
+    }, function (error) {
+        res.json(error.message)
+    })
+
+
+})
+
+
 /* Get Key data from given sprint */
 
 app.get("/releases/:release", function (req, res) {
@@ -514,12 +610,12 @@ app.get("/current", function (req, res) {
 /* Get all open tickets */
 
 app.get("/allIssues", function (req, res) {
-    allIssues(function(data) {
+    allIssues(function (data) {
         res.json(data);
     })
 })
 
-var allIssues = function(next) {
+var allIssues = function (next) {
     var q = {
         "size": 1000,
         "query": {
@@ -557,7 +653,7 @@ var allIssues = function(next) {
     defaultFields.body = q;
     elastic.search(defaultFields).then(function (results) {
         processReleaseData(results, function (data) {
-            var x = _.groupBy(data.issues, function(item) {
+            var x = _.groupBy(data.issues, function (item) {
                 return item.epic
             });
             data.issues = x;
@@ -570,7 +666,7 @@ var allIssues = function(next) {
 
 /* Get all epics and their stories */
 
-var epics = function(next) {
+var epics = function (next) {
     var t1 = {
         index: defaultFields.index,
         type: "epics"
@@ -628,19 +724,19 @@ var epics = function(next) {
             t2,
             q2
         ]
-    }).then(function(results) {
+    }).then(function (results) {
         // 0 = epics, 1 = stories
 
         //next(q2)
-        processReleaseData(results.responses[1], function(data) {
-            var stories = _.groupBy(data.issues, function(item) {
+        processReleaseData(results.responses[1], function (data) {
+            var stories = _.groupBy(data.issues, function (item) {
                 return item.epic
             })
-            var epics = results.responses[0].hits.hits.map(function(item) {
+            var epics = results.responses[0].hits.hits.map(function (item) {
                 return item._source;
             })
 
-            var x = epics.map(function(item) {
+            var x = epics.map(function (item) {
                 item.issues = stories[item.key];
                 return item
             })
@@ -652,8 +748,8 @@ var epics = function(next) {
 
 }
 
-app.get("/epics", function(req, res) {
-    epics(function(data) {
+app.get("/epics", function (req, res) {
+    epics(function (data) {
         res.json(data);
     })
 })
@@ -713,12 +809,29 @@ app.get("/ongoing", function (req, res) {
 })
 
 var jobOngoing = schedule.scheduleJob('0 0 * * * *', function () {
-    ongoing(function (data) {
-    })
+    ongoing(function (data) {})
 })
 
 var jobFinishedCurrent = schedule.scheduleJob('1 0 * * * *', function () {
-    getCurrent(function (data) {
+    getCurrent(function (data) {})
+})
+
+app.get("/getLead", function(req, res){
+    var q = {
+        size: 10000,
+        query: {
+            match_all: {}
+        }
+    }
+    defaultFields.body = q;
+    defaultFields.type = "stories"
+    elastic.search(defaultFields).then(function (results) {
+        var r = results.hits.hits
+        var lead = 0;
+        r.forEach(function(el) {
+
+        })
+
     })
 })
 

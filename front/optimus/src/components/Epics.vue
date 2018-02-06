@@ -143,7 +143,7 @@
         this.selectedEpic.lead = lead.toFixed(1)
         this.selectedEpic.spCompleted = spCompleted
         this.selectedEpic.notYetEsimated = notYetEstimated
-        this.selectedEpic.estSP = (count / withSp) * notYetEstimated
+        this.selectedEpic.estSP = ((count / withSp).toFixed(2) * notYetEstimated)
         this.selectedEpic.spPercentage = (((spCompleted) / (count + this.selectedEpic.estSP)) * 100).toFixed()
         this.selectedEpic.leadEst = ((leadCompleted / spCompleted) * (this.selectedEpic.estSP + count)).toFixed()
 

@@ -1,10 +1,16 @@
 <template>
   <div class="container">
+
     <div class="row">
       <div class="col-md-12">
         <select v-model="selectedRelease" @change="changeRelease()">
           <option v-for="release in releases" :value="release">{{release.key}} ({{release.date}})</option>
         </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col-md-12">
+        <column-chart :data="chartData"></column-chart>
       </div>
     </div>
     <div class="row" v-if="selectedRelease" style="margin-top: 2em;">
@@ -24,7 +30,7 @@
                     <small>Storypoints</small>
                     <h1>{{storyData.sprint.sp}}</h1>
                     <div class="card-text">
-                      <small>Avg. 5 sprints: {{(storyData.avgSprints.sp / 5).toFixed()}}</small>
+                      <small>Avg. 5 sprints: {{storyData.avgSprints.sp}}</small>
                     </div>
                   </div>
                   <div class="col-sm-6">
@@ -123,36 +129,53 @@
             label: 'Lead Time',
             sortable: true
           }
-        ]
+        ],
+        chartData: []
       }
     },
     created () {
       axios
-        .get('http://dashboard.gihq.be/releases')
+        .get(this.$base + '/releases')
         .then(response => {
           this.releases = response.data
         })
     },
     methods: {
-      changeRelease () {
+      changeRelease() {
         axios
           .get(this.$base + '/releases/' + this.selectedRelease.key)
           .then(response => {
             this.releaseData = response.data
             this.storyData.sprint = this.releaseData.types.filter(item => item.key.toLowerCase() == 'story')[0]
-            this.bugData.sprint = this.releaseData.types.filter(item => item.key.toLowerCase() == 'bug')[0] || {}
+            this.bugData.sprint = this.releaseData.types.filter(item => item.key.toLowerCase() == 'bug')[0] || {}
             this.storyData.sprint.sp = this.releaseData.sp.total
             this.storyData.sprint.spc = ((this.releaseData.sp.mission / this.releaseData.sp.total) * 100).toFixed(0)
           })
         axios
-          .get('http://dashboard.gihq.be/avgReleases')
+          .get(this.$base + '/rollingAvgReleases/' + this.selectedRelease.key)
           .then(response => {
             this.avgReleaseData = response.data
-            this.storyData.avgSprints = this.avgReleaseData.types.filter(item => item.key.toLowerCase() == 'story')[0]
-            this.storyData.avgSprints.sp = this.avgReleaseData.sp.total
-            this.bugData.avgSprints = this.avgReleaseData.types.filter(item => item.key.toLowerCase() == 'bug')[0]
+            this.storyData.avgSprints.sp = response.data[response.data.length - 1].mavg
+            var series = []
+            var spSeries = {}
+            spSeries.name = "Storypoints"
+            spSeries.data = {}
+            this.avgReleaseData.forEach(function (element) {
+              spSeries.data[element.name] = element.sp
+            })
+            var avgSeries = {}
+            avgSeries.name = "Average (5 sprints)"
+            avgSeries.data = {}
+            this.avgReleaseData.forEach(function (element) {
+              avgSeries.data[element.name] = element.mavg
+            })
+            console.log(avgSeries)
+            series.push(spSeries)
+            series.push(avgSeries)
+            this.chartData = series
           })
       }
     }
   }
+
 </script>

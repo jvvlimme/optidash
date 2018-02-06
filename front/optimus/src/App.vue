@@ -5,6 +5,7 @@
       <b-navbar-brand href="#">Optimus</b-navbar-brand>
       <b-navbar-nav>
         <b-nav-item :to="{name: 'HelloWorld'}">Home</b-nav-item>
+        <b-nav-item :to="{name: 'releases'}">Releases</b-nav-item>
         <b-nav-item :to="{name: 'epics'}">Epics</b-nav-item>
       </b-navbar-nav>
     </b-navbar>
