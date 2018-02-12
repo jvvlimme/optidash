@@ -131,7 +131,7 @@ var fetchIssues = function (jql, qType, gnext) {
                 x.durationPerStatusFlat[item.replace(/ /g, "_")] = statusHistory[item].duration;
                 x.durationPerStatus.push(y);
             })
-            x.durationPerStatus.forEach(function(element) {
+            x.durationPerStatus.forEach(function (element) {
                 if (element.label.indexOf(leadStatuses) > -1) {
                     x.lead += element.duration;
                 }
@@ -445,19 +445,14 @@ app.get("/rollingAvgReleases/:release", function (req, res) {
                 "bool": {
                     "must": [
                         {
-                            "terms": {
-                                "issueType.keyword": ["Story"]
-                            }
-                        },
-                        {
                             "range": {
                                 "releaseDate": {
+                                    "gte": moment("2017-08-10").format(),
                                     "lte": releaseDate
                                 }
 
                             }
                         }
-
                     ]
                 }
 
@@ -496,9 +491,9 @@ app.get("/rollingAvgReleases/:release", function (req, res) {
                     var x = {}
                     x.dt = moment(el.key_as_string).format("YYYY-MM-DD");
                     x.count = el.doc_count;
-                    x.name = el.release.buckets[0].key;
+                    x.name = el.release.buckets[0] ? el.release.buckets[0].key: "unknown" ;
                     x.sp = el.sp.value;
-                    x.mavg = el.mavg ? el.mavg.value: 0;
+                    x.mavg = el.mavg ? el.mavg.value : 0;
                     return x;
                 }))
         })
@@ -809,14 +804,16 @@ app.get("/ongoing", function (req, res) {
 })
 
 var jobOngoing = schedule.scheduleJob('0 0 * * * *', function () {
-    ongoing(function (data) {})
+    ongoing(function (data) {
+    })
 })
 
 var jobFinishedCurrent = schedule.scheduleJob('1 0 * * * *', function () {
-    getCurrent(function (data) {})
+    getCurrent(function (data) {
+    })
 })
 
-app.get("/getLead", function(req, res){
+app.get("/getLead", function (req, res) {
     var q = {
         size: 10000,
         query: {
@@ -828,15 +825,14 @@ app.get("/getLead", function(req, res){
     elastic.search(defaultFields).then(function (results) {
         var r = results.hits.hits
         var lead = 0;
-        r.forEach(function(el) {
+        r.forEach(function (el) {
 
         })
 
     })
 })
 
-app.listen(process.env.PORT, function () {
-})
+module.exports = app
 
 
 

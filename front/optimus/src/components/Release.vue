@@ -169,7 +169,6 @@
             this.avgReleaseData.forEach(function (element) {
               avgSeries.data[element.name] = element.mavg
             })
-            console.log(avgSeries)
             series.push(spSeries)
             series.push(avgSeries)
             this.chartData = series

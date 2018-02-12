@@ -18,7 +18,7 @@ import VueChartkick from 'vue-chartkick'
 
 Vue.use(VueChartkick, { Chartkick })
 
-Vue.prototype.$base = 'http://dashboard.gihq.be'
+Vue.prototype.$base = 'https://g8lccqgiof.execute-api.eu-west-1.amazonaws.com/latest'
 Vue.prototype.$http = axios
 
 Vue.use(VueYouTubeEmbed)
