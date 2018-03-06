@@ -5,6 +5,7 @@ import video from '@/components/Video'
 import ongoing from '@/components/Current'
 import releases from '@/components/Release'
 import epics from '@/components/Epics'
+import aws from '@/components/Aws'
 Vue.use(Router)
 
 export default new Router({
@@ -33,6 +34,11 @@ export default new Router({
       path: '/epics',
       name: 'epics',
       component: epics
+    },
+    {
+      path: '/aws',
+      name: 'aws',
+      component: aws
     }
   ]
 })

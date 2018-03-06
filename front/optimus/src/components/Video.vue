@@ -34,9 +34,11 @@
           </b-form-textarea>
         </b-form-group>
         <b-form-group>
-          <b-button @click="getTime" variant="success">Add</b-button>
+          <b-button @click="getTime" variant="success">Add Demo Item</b-button>
         </b-form-group>
-
+          <b-form-group>
+            <b-button @click="getFutureTime" variant="success">Add Future Item</b-button>
+          </b-form-group>
       </div>
     </div>
     <div class="row">
@@ -50,6 +52,7 @@
     </div>
     <div class="row">
       <div class="col-md-12">
+        <textarea name="" id="editor" cols="30" rows="10" v-model="mdEditor"></textarea>
         <p><b>Optimus Sprint Demo (<span v-for="(d, index) in sprintDates">{{d | moment('DD/MM/YYYY')}} <span v-if="index !=sprintDates.length - 1 "> - </span></span>)</b></p>
         <p></p>
         <p>Beste Collega's</p>
@@ -61,6 +64,10 @@
         </p>
         <p>
           <b>Waar werken we volgende 2 weken aan?</b>
+        <p>
+        <ul>
+          <li v-for="item in futureItems"><a :href="'https://www.youtube.com/watch?v='+ videoId + '&t=' +item.time" target="_blank">{{item.title}}</a><br />{{item.description}}</li>
+        </ul>
         </p>
         <p>
           <b>Links</b>
@@ -78,6 +85,9 @@
           Product Owner Optimus Squad
 
         </p>
+        <b-form-group>
+          <b-button @click="sendMail" variant="primary">Send Sprint Mail</b-button>
+        </b-form-group>
       </div>
     </div>
   </div>
@@ -96,7 +106,8 @@
           title: '',
           description: ''
         },
-        videoItems: []
+        videoItems: [],
+        mdEditor: ''
       }
     },
     methods: {
@@ -106,20 +117,35 @@
       ready (player) {
         this.player = player
       },
-      getTime () {
-        this.videoItems.push(this.videoItem)
+      clearVideoItem () {
         this.videoItem = {
           time: '',
           title: '',
           description: ''
         }
-        console.log(this.videoItems)
+      },
+      getTime () {
+        this.videoItems.push(this.videoItem)
+        this.clearVideoItem()
+        this.player.playVideo()
+      },
+      getFutureTime () {
+        this.futureItems.push(this.videoItem)
+        this.clearVideoItem()
         this.player.playVideo()
       },
       addItem () {
         this.player.pauseVideo()
         this.videoItem.time = Math.round(this.player.getCurrentTime())
         console.log(this.videoItem)
+      },
+      sendMail () {
+        var x = {}
+        x.videoItems = this.videoItems
+        x.futureItems = this.futureItems
+        this.$http(this.$base + '/sprintmail', x).then(response => {
+          console.log(response)
+        })
       }
     }
   }

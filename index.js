@@ -2,12 +2,13 @@
 
 require('dotenv').config();
 var http = require("request"),
-    _ = require("underscore"),
+    _ = require("lodash"),
     async = require("async"),
     cors = require('cors'),
     moment = require('moment'),
     path = require('path'),
-    bodyParser = require('body-parser')
+    bodyParser = require('body-parser'),
+    ses = require('node-ses')
 elasticsearch = require('elasticsearch'),
     elastic = new elasticsearch.Client({
         host: process.env.ES
@@ -20,6 +21,8 @@ const filter = process.env.FILTER;
 const apiuser = process.env.APIUSER;
 const apipass = process.env.APIPASS;
 const jira = process.env.JIRA;
+
+const mail = ses.createClient({ key: process.env.MAILID, secret: process.env.MAILSECRET, amazon: "https://email.eu-west-1.amazonaws.com" });
 
 
 const express = require('express');
@@ -39,6 +42,13 @@ var issues = [],
         "type": "stories",
         "body": {}
     }
+
+// Helper functions
+
+function nl2br (str, is_xhtml) {
+    var breakTag = (is_xhtml || typeof is_xhtml === 'undefined') ? '<br />' : '<br>';
+    return (str + '').replace(/([^>\r\n]?)(\r\n|\n\r|\r|\n)/g, '$1' + breakTag + '$2');
+}
 
 
 // Fetch all data
@@ -803,16 +813,6 @@ app.get("/ongoing", function (req, res) {
     })
 })
 
-var jobOngoing = schedule.scheduleJob('0 0 * * * *', function () {
-    ongoing(function (data) {
-    })
-})
-
-var jobFinishedCurrent = schedule.scheduleJob('1 0 * * * *', function () {
-    getCurrent(function (data) {
-    })
-})
-
 app.get("/getLead", function (req, res) {
     var q = {
         size: 10000,
@@ -832,7 +832,191 @@ app.get("/getLead", function (req, res) {
     })
 })
 
+// AWS
+
+app.get("/fetchAws", function(req, res) {
+
+    // WIP
+
+    http("https://api.cloudcheckr.com/api/billing.json/get_detailed_billing_with_grouping_v2?saved_filter_name="+process.env.CCREPORT+"&access_key="+process.env.CLDCHKR, function(err, resp, r) {
+        var awsData = JSON.parse(r).CostsByTime
+        var body = []
+        awsData.forEach(function(service) {
+            var x = {}, z = {}
+            var name = service.Groups[0].FriendlyName
+            x._index='stories'
+            x._type='aws'
+            service.CostDates.forEach(function(point) {
+                x._id = name + "-" + moment(point.Date).format("YYYY-MM-DD");
+                z.index = x
+                body.push(z);
+                var y = {}
+                y.name = name;
+                y.dt = moment(point.Date).format();
+                y.cost = parseFloat(point.Cost).toFixed(2);
+                body.push(y);
+            })
+        })
+        elastic.bulk({body: body}, function(err, resp) {
+            res.json(resp);
+        })
+    })
+})
+
+app.get("/aws/detail", function(req, res) {
+
+    // WIP
+
+    var aggregation = {"aggs": {
+        "cost_over_time": {
+            "date_histogram": {
+                "field": "dt",
+                "interval": "day"
+            },
+            "aggs": {
+                "service": {
+                    "terms": {
+                        "field": "name"
+                    }
+                },
+                "aggs": {
+                    "cost": {
+                        "sum": {
+                            "field": "cost"
+                        }
+                    }
+                }
+            }
+        }
+    }}
+})
+
+
+var getCostSavings = function(next) {
+    http("https://api.cloudcheckr.com/api/billing.json/get_cost_saving?access_key="+process.env.CLDCHKR, function(err, resp, r) {
+        var result = JSON.parse(r);
+        var keys = Object.keys(result);
+
+        var improvements = []
+
+        keys.forEach(function(el) {
+            if (el.indexOf("Total") == -1) {
+                if (result[el] && result[el].length) {
+                    result[el].forEach(function(imp) {
+                        var x = {}
+                        x.name = imp.Name;
+                        x.savings = imp.TotalSaving;
+                        improvements.push(x)
+                    })
+                }
+
+            }
+        })
+
+        var y = {}
+        y.totalSavings = result.TotalSaving;
+        y.improvements = improvements;
+
+        next(y);
+
+    })
+}
+
+app.get("/aws/savings", function(req, res) {
+    getCostSavings(function(vals) {
+        res.json(vals)
+    })
+})
+
+app.get("/aws", function(req, res) {
+    var x = {}
+    var start = moment().startOf("month").format("YYYY-MM-DD"),
+        end = moment().format("YYYY-MM-DD"),
+        daysInMonth = moment().daysInMonth(),
+        startLastMonth = moment().subtract(1, "month").startOf("month").format("YYYY-MM-DD"),
+        endLastMonth = moment().subtract(1, "month").endOf("month").format("YYYY-MM-DD");
+    console.log(start, end)
+    // Get data for ongoing month
+    http("https://api.cloudcheckr.com/api/billing.json/get_detailed_billing_with_grouping_v2?saved_filter_name="+process.env.CCREPORT+"&access_key="+process.env.CLDCHKR + "&start=" + start + "&end=" + end, function(err, resp, r) {
+        console.log(r)
+        var result = JSON.parse(r);
+        x.mtd = parseFloat(result.Total.toFixed(2));
+        x.forecast = parseFloat(((result.Total / moment().format("DD")) * daysInMonth).toFixed(2));
+
+            x.services = result.CostsByGroup.map(function(service) {
+                var y = {}
+                y.name = service.GroupValue;
+                y.cost = parseFloat(service.Cost);
+                return y;
+            })
+
+
+        // Get data for past month
+        http("https://api.cloudcheckr.com/api/billing.json/get_detailed_billing_with_grouping_v2?saved_filter_name="+process.env.CCREPORT+"&access_key="+process.env.CLDCHKR + "&start=" + startLastMonth + "&end=" + endLastMonth, function(err, resp2, r2) {
+            x.last = parseFloat(JSON.parse(r2).Total.toFixed(2));
+
+            // Get savings
+
+            getCostSavings(function(result) {
+                x.savings = result;
+                res.json(x);
+            })
+
+        });
+
+    })
+})
+
+app.get("/sprintmail", function(req, res) {
+
+    // WIP
+
+    var CRLF = '\r\n';
+    var rawMessage = [
+        'From: "Jan van Vlimmeren" <jan.van.vlimmeren@persgroep.net>',
+        'To: "Jan van Vlimmeren" <jan.vanvlimmeren@gmail.com>',
+        'Subject: greetings',
+        'Content-Type: multipart/mixed;',
+        '    boundary="_003_97DCB304C5294779BEBCFC8357FCC4D2"',
+        'MIME-Version: 1.0',
+        '',
+        '--_003_97DCB304C5294779BEBCFC8357FCC4D2',
+        'Content-Type: text/plain; charset="us-ascii"',
+        'Content-Transfer-Encoding: quoted-printable',
+        'Hi brozeph,',
+        '',
+        'I have attached a code file for you.',
+        '',
+        'Cheers.',
+        '',
+        '--_003_97DCB304C5294779BEBCFC8357FCC4D2',
+        'Content-Type: text/plain; name="code.txt"',
+        'Content-Description: code.txt',
+        'Content-Disposition: attachment; filename="code.txt"; size=4;',
+        '    creation-date="Mon, 03 Aug 2015 11:39:39 GMT";',
+        '    modification-date="Mon, 03 Aug 2015 11:39:39 GMT"',
+        'Content-Transfer-Encoding: base64',
+        '',
+        'ZWNobyBoZWxsbyB3b3JsZAo=',
+        '',
+        '--_003_97DCB304C5294779BEBCFC8357FCC4D2',
+        ''
+    ].join(CRLF);
+
+    mail.sendEmail({
+        to: 'jan.van.vlimmeren@persgroep.net'
+        , from: 'jan.van.vlimmeren@persgroep.net'
+        , subject: 'greetings'
+        , message: 'your <b>message</b> goes here'
+    }, function(err, data, res) {
+        console.log(err)
+        console.log(data)
+        console.log(res)
+    });
+})
+
 module.exports = app
 
 
+//app.listen(process.env.PORT, function () {})
 

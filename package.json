@@ -6,12 +6,18 @@
     "aws-serverless-express": "^3.1.0",
     "body-parser": "^1.18.2",
     "cors": "^2.8.4",
+    "csv": "^2.0.0",
     "dotenv": "^4.0.0",
     "elasticsearch": "^13.3.1",
     "express": "^4.16.1",
+    "lodash": "^4.17.5",
     "moment": "^2.19.1",
     "node-schedule": "^1.2.5",
+    "node-ses": "^2.1.0",
     "request": "^2.81.0",
     "underscore": "^1.8.3"
+  },
+  "devDependencies": {
+    "claudia": "^3.3.1"
   }
 }
